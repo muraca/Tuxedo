@@ -129,7 +129,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with: 
           command: llvm-cov
-          args: nextest --lcov --output-path lcov.info
+          args: nextest --lcov --ignore-filename-regex "node/" --output-path lcov.info
       - name: Report code coverage
         uses: Nef10/lcov-reporter-action@v0.4.0
         with:
