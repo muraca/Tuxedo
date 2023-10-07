@@ -14,6 +14,7 @@ members = [
 	"wardrobe/poe",
 	"wardrobe/kitties",
 	"wardrobe/runtime_upgrade",
+	"wardrobe/tux0",
 ]
 resolver = "2"
 

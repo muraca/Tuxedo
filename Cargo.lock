@@ -8286,6 +8286,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "tux0"
+version = "0.1.0"
+dependencies = [
+ "money",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-runtime",
+ "sp-std",
+ "tuxedo-core",
+]
+
+[[package]]
 name = "tuxedo-core"
 version = "1.0.0-dev"
 dependencies = [
