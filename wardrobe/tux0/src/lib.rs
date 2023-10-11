@@ -12,22 +12,18 @@ use sp_runtime::{transaction_validity::TransactionPriority, SaturatedConversion}
 use sp_std::prelude::*;
 use tuxedo_core::{
     dynamic_typing::{DynamicallyTypedData, UtxoData},
-    ensure, SimpleConstraintChecker,
+    SimpleConstraintChecker,
 };
 
 #[cfg(test)]
 mod tests;
 
-/// The main constraint checker for the utx0 piece. Allows minting and pouring DAP coins.
+/// The main constraint checker for the utx0 piece.
+/// The only operation supported is a transfer of Coins or DAPCoins of the same ID.
+/// The value of the consumed Coins must be greater or equal to the value of the created Coins.
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash, Debug, TypeInfo)]
-pub enum Utx0ConstraintChecker<const ID: u8> {
-    /// A mint transaction that creates DAPCoins from Coins of the same ID.
-    /// The amount of DAPCoins created is equal or less than the value of Coins consumed.
-    Mint,
-    /// A pour transaction, where DAP coins are consumed, and other DAPCoin or Coin might be created.
-    Pour,
-}
+pub struct Utx0ConstraintChecker<const ID: u8>;
 
 /// A single coin in the DAP money system.
 /// A new-type wrapper around a hashed value.
@@ -43,11 +39,6 @@ impl<const ID: u8> UtxoData for DAPCoin<ID> {
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(PartialEq, Eq, PartialOrd, Ord, Clone, Encode, Decode, Hash, Debug, TypeInfo)]
 pub enum ConstraintCheckerError {
-    /// This functionality has not been implemented yet.
-    NotImplemented,
-
-    /// The transaction attempts to mint without consuming any inputs.
-    MintingFromNothing,
     /// Dynamic typing issue.
     /// This error doesn't discriminate between badly typed inputs and outputs.
     BadlyTyped,
@@ -59,6 +50,30 @@ pub enum ConstraintCheckerError {
     OutputsExceedInputs,
 }
 
+fn total_value<const ID: u8>(
+    data: &[DynamicallyTypedData],
+) -> Result<u128, ConstraintCheckerError> {
+    let mut total: u128 = 0;
+    for item in data {
+        if item.type_id == Coin::<ID>::TYPE_ID {
+            let utxo_value = item
+                .extract::<Coin<ID>>()
+                .map_err(|_| ConstraintCheckerError::BadlyTyped)?
+                .0;
+            total = total
+                .checked_add(utxo_value)
+                .ok_or(ConstraintCheckerError::ValueOverflow)?;
+        } else if item.type_id == DAPCoin::<ID>::TYPE_ID {
+            total = total
+                .checked_add(1)
+                .ok_or(ConstraintCheckerError::ValueOverflow)?;
+        } else {
+            return Err(ConstraintCheckerError::BadlyTyped);
+        }
+    }
+    Ok(total)
+}
+
 impl<const ID: u8> SimpleConstraintChecker for Utx0ConstraintChecker<ID> {
     type Error = ConstraintCheckerError;
 
@@ -68,34 +83,14 @@ impl<const ID: u8> SimpleConstraintChecker for Utx0ConstraintChecker<ID> {
         _peeks: &[DynamicallyTypedData],
         output_data: &[DynamicallyTypedData],
     ) -> Result<TransactionPriority, Self::Error> {
-        match &self {
-            Utx0ConstraintChecker::Mint => {
-                // Check that we are consuming at least one input
-                ensure!(
-                    !input_data.is_empty(),
-                    ConstraintCheckerError::MintingFromNothing
-                );
+        // Check that sum of input values < output values
+        let total_input_value = total_value::<ID>(input_data)?;
+        let total_output_value = total_value::<ID>(output_data)?;
 
-                let mut total_input_value: u128 = 0;
-
-                // Check that sum of input values < output values
-                for input in input_data {
-                    let utxo_value = input
-                        .extract::<Coin<ID>>()
-                        .map_err(|_| ConstraintCheckerError::BadlyTyped)?
-                        .0;
-                    total_input_value = total_input_value
-                        .checked_add(utxo_value)
-                        .ok_or(ConstraintCheckerError::ValueOverflow)?;
-                }
-
-                if total_input_value >= output_data.len() as u128 {
-                    Ok((total_input_value - output_data.len() as u128).saturated_into())
-                } else {
-                    Err(ConstraintCheckerError::OutputsExceedInputs)
-                }
-            }
-            Utx0ConstraintChecker::Pour => Err(ConstraintCheckerError::NotImplemented),
+        if total_input_value >= total_output_value {
+            Ok((total_input_value - total_output_value).saturated_into())
+        } else {
+            Err(ConstraintCheckerError::OutputsExceedInputs)
         }
     }
 }
