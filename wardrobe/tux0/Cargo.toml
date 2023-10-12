@@ -17,6 +17,9 @@ sp-std = { default_features = false, workspace = true }
 money = { path = "../money" }
 tuxedo-core = { default-features = false, path = "../../tuxedo-core" }
 
+# Crypto dependencies
+ecies-ed25519 = "0.5.1"
+rand = "0.7.3"
 
 [features]
 default = [ "std" ]
